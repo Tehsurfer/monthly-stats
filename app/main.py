@@ -47,7 +47,7 @@ def thread_testy():
 
 def logTimeSinceStart():
     global scheduleResult
-    scheduleResult = 'Log from schedule made at ' + datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y %Z") + ' <br>' + scheduleResult
+    scheduleResult = 'Log from schedule made at ' + datetime.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S %Z")+ ' <br>' + scheduleResult
     return
 
 def start_app():
