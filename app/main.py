@@ -6,16 +6,20 @@ import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__, static_url_path='')
-test_result = 'failed'
+test_result = 'failed. Thread has not updated this text to pass'
 scheduleResult = ''
 
 @app.before_first_request
 def execute_this():
-    threading.Thread(target=thread_testy).start()
     # Start the scheduler
     sched = BackgroundScheduler()
     sched.start()
     job = sched.add_job(logTimeSinceStart, 'interval', minutes=1)
+
+    # start the test thread
+    threading.Thread(target=thread_testy).start()
+
+
 
 @app.route('/')
 def index():
@@ -43,7 +47,7 @@ def thread_testy():
 
 def logTimeSinceStart():
     global scheduleResult
-    scheduleResult = 'Log from schedule made at ' + datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y") + '\n' + scheduleResult
+    scheduleResult = 'Log from schedule made at ' + datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y") + ' <br>' + scheduleResult
     return
 
 def start_app():
