@@ -7,13 +7,20 @@ import datetime
 import requests
 from flask import jsonify
 import json
+import sendgrid
+from sendgrid.helpers.mail import Content, Email, Mail, To, Attachment, FileName, FileType, Disposition, FileContent, Asm, GroupId, GroupsToDisplay
 from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import boto3
 import requests
 
+
+sg_client = sendgrid.SendGridAPIClient(api_key=Config.SENDGRID_API_KEY)
+
+
 PENNSIEVE_URL = "https://api.pennsieve.io"
+UNSUBSCRIBE_GROUP = 112703
 organization = 'N:organization:618e8dd9-f8d2-4dc4-9abb-c6aaab2e78a0'
 api_key = Config.PENNSIEVE_API_TOKEN
 api_secret = Config.PENNSIEVE_API_SECRET
@@ -40,30 +47,21 @@ login_response = cognito_idp_client.initiate_auth(
 api_key = login_response["AuthenticationResult"]["AccessToken"]
 
 app = Flask(__name__, static_url_path='')
-test_result = 'failed. Thread has not updated this text to pass'
 scheduleResult = ''
 
 @app.before_first_request
 def execute_this():
+    runSchedule()
     # Start the scheduler
     sched = BackgroundScheduler()
     sched.start()
-    job = sched.add_job(logTimeSinceStart, 'interval', minutes=1)
-
-    # start the test thread
-    threading.Thread(target=thread_testy).start()
-
+    job = sched.add_job(runSchedule, 'interval', hours=12)
 
 
 @app.route('/')
 def index():
     return 'Hello! Server is running successfully! Try navigating to /thread-test/ to test the thread or to /schedule/ to see the scheduler'
 
-@app.route('/thread-test/')
-@app.route('/thread-test')
-def thread_test():
-    global test_result
-    return test_result
 
 @app.route('/schedule/')
 @app.route('/schedule')
@@ -86,6 +84,10 @@ def users():
 
 @app.route('/emails/')
 def emails():
+    return app.response_class(get_emails(), mimetype='application/json')
+
+# Places emails on the an object with orcid_ids
+def get_emails():
     user_stats = getOrcidStats()
     global api_key, organization
     r = requests.get(f"{PENNSIEVE_URL}/organizations/{organization}/members", headers={"Authorization": f"Bearer {api_key}"})
@@ -93,15 +95,19 @@ def emails():
     user_details = r.json()
     for user in user_details:
         if 'orcid' in user.keys():
-            if user['orcid']['orcid'] in user_stats.keys():
-                user_stats[user['orcid']['orcid']]['email'] = user['email']
+            orcid_id = user['orcid']['orcid']
+            if orcid_id in user_stats.keys():
+                user_stats[orcid_id]['email'] = user['email']
 
 
-    return app.response_class(json.dumps(user_stats), mimetype='application/json')
+    return user_stats
 
+# Find orcid ids associated with datasets
 def getOrcidStats():
     downloads = getMonthlyStats()
     users = {}
+
+    # send a request asking for info on the datsets with downloads
     r = requests.get('https://api.pennsieve.io/discover/datasets',{
         'limit': 1000,
         'ids': [d['datasetId'] for d in downloads]
@@ -110,28 +116,23 @@ def getOrcidStats():
     for dataset in datasets:
         downloadInfo = [d for d in downloads if dataset['id'] == d['datasetId']]
         for contributor in dataset['contributors']:
-            if contributor['orcid'] not in users.keys():
-                users[contributor['orcid']] = {}
-                users[contributor['orcid']]['datasets'] = downloadInfo
+            orcid_id = contributor['orcid']
+            if orcid_id not in users.keys():
+                users[orcid_id] = {}
+                users[orcid_id]['datasets'] = downloadInfo
             else:
-                users[contributor['orcid']]['datasets'] += downloadInfo
+                users[orcid_id]['datasets'] += downloadInfo
     return users
 
-def thread_testy():
-    time.sleep(10)
-    print('Thread is printing to console')
-    sys.stdout.flush()
-    global test_result
-    test_result = 'passed'
-    return
-
+# Use to see when scheduler has run
 def logTimeSinceStart():
     global scheduleResult
     scheduleResult = 'Log from schedule made at ' + datetime.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S %Z")+ ' <br>' + scheduleResult
     return
 
+# Get 1 month's metrics from Pennsieve
 def getMonthlyStats():
-    start_date = datetime.datetime.now() - relativedelta(months=1)
+    start_date = datetime.datetime.now() - relativedelta(hours=12)
     formatted_start_date = start_date.strftime('%Y-%m-%d')
 
     end_date = datetime.datetime.now()
@@ -142,6 +143,23 @@ def getMonthlyStats():
     })
     return r.json()
 
+def runSchedule():
+    logTimeSinceStart()
+    sendgrid_email(json.dumps(get_emails()))
+
+# Send email to myself for testing
+@app.route('/send-email/')
+def sendgrid_email(content="<b>Hello there! There should be download stats here, I don't know what happened!</b>"):
+        mail = Mail(
+            Email('jessekhora@gmail.com'),
+            To('nametaken47@gmail.com'),
+            'Download statistics',
+            Content("text/html", content),
+
+        )
+        mail.asm = Asm(GroupId(UNSUBSCRIBE_GROUP), GroupsToDisplay([UNSUBSCRIBE_GROUP]))
+        response = sg_client.send(mail)
+        return jsonify(response.status_code)
 
 def start_app():
     threading.Thread(target=app.run).start()
