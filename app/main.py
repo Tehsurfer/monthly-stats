@@ -130,7 +130,7 @@ def logTimeSinceStart():
     scheduleResult = 'Log from schedule made at ' + datetime.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S %Z")+ ' <br>' + scheduleResult
     return
 
-# Get 1 month's metrics from Pennsieve
+# Get 1 month's metrics from Pennsieve (note this is currently running every 12 hours for testing)
 def getMonthlyStats():
     start_date = datetime.datetime.now() - relativedelta(hours=12)
     formatted_start_date = start_date.strftime('%Y-%m-%d')
