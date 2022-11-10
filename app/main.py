@@ -25,26 +25,28 @@ organization = 'N:organization:618e8dd9-f8d2-4dc4-9abb-c6aaab2e78a0'
 api_key = Config.PENNSIEVE_API_TOKEN
 api_secret = Config.PENNSIEVE_API_SECRET
 
-r = requests.get(f"{PENNSIEVE_URL}/authentication/cognito-config")
-r.raise_for_status()
+def pennsieve_login():
+    r = requests.get(f"{PENNSIEVE_URL}/authentication/cognito-config")
+    r.raise_for_status()
 
-cognito_app_client_id = r.json()["tokenPool"]["appClientId"]
-cognito_region = r.json()["region"]
+    cognito_app_client_id = r.json()["tokenPool"]["appClientId"]
+    cognito_region = r.json()["region"]
 
-cognito_idp_client = boto3.client(
-    "cognito-idp",
-    region_name=cognito_region,
-    aws_access_key_id="",
-    aws_secret_access_key="",
-)
+    cognito_idp_client = boto3.client(
+        "cognito-idp",
+        region_name=cognito_region,
+        aws_access_key_id="",
+        aws_secret_access_key="",
+    )
 
-login_response = cognito_idp_client.initiate_auth(
-    AuthFlow="USER_PASSWORD_AUTH",
-    AuthParameters={"USERNAME": api_key, "PASSWORD": api_secret},
-    ClientId=cognito_app_client_id,
-)
+    login_response = cognito_idp_client.initiate_auth(
+        AuthFlow="USER_PASSWORD_AUTH",
+        AuthParameters={"USERNAME": Config.PENNSIEVE_API_TOKEN, "PASSWORD": Config.PENNSIEVE_API_SECRET},
+        ClientId=cognito_app_client_id,
+    )
 
-api_key = login_response["AuthenticationResult"]["AccessToken"]
+    api_key = login_response["AuthenticationResult"]["AccessToken"]
+    return api_key
 
 app = Flask(__name__, static_url_path='')
 scheduleResult = ''
@@ -89,7 +91,8 @@ def emails():
 # Places emails on the an object with orcid_ids
 def get_emails():
     user_stats = getOrcidStats()
-    global api_key, organization
+    global organization
+    api_key = pennsieve_login()
     r = requests.get(f"{PENNSIEVE_URL}/organizations/{organization}/members", headers={"Authorization": f"Bearer {api_key}"})
     r.raise_for_status()
     user_details = r.json()
